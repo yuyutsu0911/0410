@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>粉絲應援術語大百科 - AR 掃描控制台</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    
+    <style>
+      /* 1. 科技感手機 UI 覆蓋層 (完全還原圖片第四張風格) */
+      body { margin: 0; overflow: hidden; font-family: 'PingFang TC', 'Helvetica Neue', sans-serif; }
+      
+      #ui-container {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        z-index: 10; pointer-events: none; /* 讓點擊穿透到 3D 場景 */
+        display: flex; flex-direction: column; justify-content: space-between;
+        box-sizing: border-box; padding: 40px 20px;
+      }
+
+      .interactive { pointer-events: auto; } /* 允許點擊的 UI 元素 */
+
+      /* 頂部列：關閉、切換與幫助 */
+      .top-bar { display: flex; justify-content: space-between; align-items: center; }
+      .btn-circle-top { width: 40px; height: 40px; background: rgba(255,255,255,0.15); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; backdrop-filter: blur(5px); }
+      .tab-switch { background: rgba(0, 0, 0, 0.4); padding: 6px 12px; border-radius: 20px; display: flex; gap: 10px; border: 1px solid rgba(255,255,255,0.1); }
+      .tab-item { color: #888; font-size: 13px; padding: 4px 12px; border-radius: 15px; cursor: pointer; }
+      .tab-item.active { background: white; color: black; font-weight: bold; }
+
+      /* 中央掃描輔助框 */
+      .scan-reticle {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 260px; height: 260px; border: 2px solid rgba(138, 92, 246, 0.3); border-radius: 24px;
+        box-shadow: 0 0 20px rgba(138, 92, 246, 0.1); pointer-events: none;
+      }
+      /* 模擬四個角落的發光邊框 */
+      .scan-reticle::before, .scan-reticle::after {
+        content: ''; position: absolute; width: 30px; height: 30px; border-color: #a78bfa; border-style: solid;
+      }
+      .scan-reticle::before { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 20px; }
+      .scan-reticle::after { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 20px; }
+
+      /* 提示文字與動態資訊 */
+      .info-toast { text-align: center; color: white; margin-bottom: 20px; }
+      .info-toast h3 { font-size: 16px; margin: 0 0 8px 0; font-weight: 500; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+      .info-toast p { font-size: 12px; color: #b3b3b3; margin: 0; }
+
+      /* 下方極簡科技感深色控制面板 */
+      .bottom-panel {
+        background: rgba(13, 13, 23, 0.85); border-radius: 30px; padding: 20px;
+        display: flex; justify-content: space-around; align-items: center;
+        border: 1px solid rgba(138, 92, 246, 0.2); backdrop-filter: blur(10px);
+        box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+      }
+      .nav-item { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; color: #7e7e8a; transition: all 0.3s; }
+      .nav-icon { width: 50px; height: 50px; background: #1a1a2e; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; border: 1px solid rgba(255,255,255,0.05); color: #b0b0cc; }
+      .nav-item span { font-size: 12px; }
+      /* 啟用狀態：紫色霓虹發光風格 */
+      .nav-item.active { color: #c0aeff; }
+      .nav-item.active .nav-icon { background: #8a5cf6; color: white; box-shadow: 0 0 15px #8a5cf6; border-color: #a78bfa; }
+    </style>
+  </head>
+  <body>
+
+    <div id="ui-container">
+      <div class="top-bar interactive">
+        <div class="btn-circle-top">✕</div>
+        <div class="tab-switch">
+          <div class="tab-item active">AR 掃描</div>
+          <div class="tab-item">我的收藏</div>
+        </div>
+        <div class="btn-circle-top">?</div>
+      </div>
+
+      <div class="scan-reticle"></div>
+
+      <div class="bottom-area">
+        <div class="info-toast">
+          <h3 id="display-title">掃描專輯封面或小卡</h3>
+          <p id="display-subtitle">即可查看 3D 成員與應援內容</p>
+        </div>
+        
+        <div class="bottom-panel interactive">
+          <div class="nav-item active" id="nav-scan">
+            <div class="nav-icon">📷</div><span>掃描</span>
+          </div>
+          <div class="nav-item" id="nav-music">
+            <div class="nav-icon">🎵</div><span>音樂</span>
+          </div>
+          <div class="nav-item" id="nav-info">
+            <div class="nav-icon">👤</div><span>介紹</span>
+          </div>
+          <div class="nav-item" id="nav-chant">
+            <div class="nav-icon">🎤</div><span>應援詞</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <a-scene vr-mode-ui="enabled: false" cursor="rayOrigin: mouse">
+      <a-assets>
+        <audio id="music-super" src="https://actions.google.com/sounds/v1/ambiences/morning_birds.ogg" preload="auto"></audio>
+      </a-assets>
+
+      <a-sky color="#07070f"></a-sky>
+
+      <a-entity id="ar-target-group" position="0 1.5 -2.5" rotation="10 0 0">
+        
+        <a-box id="album-3d" position="0 0 0" width="1.2" height="1.4" depth="0.1" color="#1c1936"
+               material="roughness: 0.2; metalness: 0.5"
+               animation="property: rotation; to: 0 360 0; loop: true; dur: 12000; easing: linear">
+          <a-cone color="#a78bfa" radius-bottom="0.3" height="0.5" position="0 0 0.06" rotation="0 0 180" material="emissive: #8a5cf6; emissiveIntensity: 0.5"></a-cone>
+          <a-text value="SEVENTEEN" color="#ffffff" align="center" position="0 -0.4 0.06" width="3.5" bold="true"></a-text>
+        </a-box>
+
+        <a-ring color="#c0aeff" radius-inner="0.9" radius-outer="0.93" rotation="75 0 0" position="0 -0.1 0"
+                material="emissive: #a78bfa; emissiveIntensity: 2"
+                animation="property: scale; from: 0.9 0.9 0.9; to: 1.1 1.1 1.1; dir: alternate; loop: true; dur: 2000; easing: easeInOutQuad">
+        </a-ring>
+      </a-entity>
+
+      <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+      const navScan = document.querySelector('#nav-scan');
+      const navMusic = document.querySelector('#nav-music');
+      const navInfo = document.querySelector('#nav-info');
+      const navChant = document.querySelector('#nav-chant');
+
+      const displayTitle = document.querySelector('#display-title');
+      const displaySubtitle = document.querySelector('#display-subtitle');
+      const album3d = document.querySelector('#album-3d');
+      const bgm = document.querySelector('#music-super');
+
+      let isMusicPlaying = false;
+
+      // 切換選單樣式的共用函式
+      function setActiveNav(activeBtn) {
+        [navScan, navMusic, navInfo, navChant].forEach(btn => btn.classList.remove('active'));
+        activeBtn.classList.add('active');
+      }
+
+      // 1. 點擊「掃描」
+      navScan.addEventListener('click', () => {
+        setActiveNav(navScan);
+        displayTitle.innerText = "已辨識目標：SEVENTEEN";
+        displaySubtitle.innerText = "專輯《FML》- 主打歌 Super";
+        // 讓 3D 專輯做出放大反饋
+        album3d.setAttribute('animation__click', 'property: scale; from: 1.2 1.2 1.2; to: 1 1 1; dur: 500');
+      });
+
+      // 2. 點擊「音樂」 (控制音樂播放與暫停)
+      navMusic.addEventListener('click', () => {
+        setActiveNav(navMusic);
+        if (!isMusicPlaying) {
+          bgm.components.sound.playSound();
+          isMusicPlaying = true;
+          displayTitle.innerText = "正在播放：Super (孫悟空)";
+          displaySubtitle.innerText = "音樂曲風：強烈節奏舞曲 (00:12 / 03:20)";
+        } else {
+          bgm.components.sound.pauseSound();
+          isMusicPlaying = false;
+          displayTitle.innerText = "音樂已暫停";
+          displaySubtitle.innerText = "點擊音樂圖示可重新播放";
+        }
+      });
+
+      // 3. 點擊「介紹」
+      navInfo.addEventListener('click', () => {
+        setActiveNav(navInfo);
+        displayTitle.innerText = "SEVENTEEN (セブチ)";
+        displaySubtitle.innerText = "13位成員組成的自我製作偶像團體。粉絲名：CARAT";
+      });
+
+      // 4. 點擊「應援詞」
+      navChant.addEventListener('click', () => {
+        setActiveNav(navChant);
+        displayTitle.innerText = "모두 소리 질러 (大家一起尖叫！)";
+        displaySubtitle.innerText = "下一句提示：우린 지금 Super (我們現在 Super)";
+      });
+    </script>
+  </body>
+</html>
